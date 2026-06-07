@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="mod/doc2interact/db" VERSION="20260607" COMMENT="Doc2Interact module table">
+  <TABLES>
+    <TABLE NAME="doc2interact" COMMENT="Instancias de la actividad Doc2Interact">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="course"       TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="name"         TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="intro"        TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="introformat"  TYPE="int"  LENGTH="4"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="tipocont"     TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pagina"/>
+        <FIELD NAME="timecreated"  TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="course" UNIQUE="false" FIELDS="course"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>
