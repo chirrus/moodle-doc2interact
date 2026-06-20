@@ -70,10 +70,12 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
     if (empty(trim($texto))) {
         echo $OUTPUT->notification('Debés subir un archivo y esperar que se extraiga el texto.', 'error');
     } else {
+        $tipoh5p = optional_param('tipoh5p', 'questionset', PARAM_ALPHA);
         $payload = json_encode([
             'accessKey'     => $apikey,
             'textoCompleto' => $texto,
             'titulo'        => $titulo,
+            'tipoH5p'       => $tipoh5p,
             'promptExtra'   => $instrucciones,
             'nombreBase'    => preg_replace('/[^a-z0-9_]/i', '_', $titulo),
             'logo'          => '',
@@ -393,6 +395,15 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) !== 'generate') {
           <label style="display:block;font-weight:600;margin-bottom:.4rem;">Título del contenido</label>
           <input type="text" name="titulo" value="<?php echo s($instance->name); ?>" style="width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;" />
         </div>
+        <div style="margin-bottom:1rem;">
+          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Tipo de actividad H5P</label>
+          <select name="tipoh5p" style="width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;">
+            <option value="questionset">🎯 Question Set (5 MCH + 5 V/F)</option>
+            <option value="crucigrama">🔤 Crucigrama (8 palabras clave)</option>
+            <option value="singlechoice">⚡ Single Choice (10 preguntas rápidas)</option>
+          </select>
+        </div>
+
         <div style="margin-bottom:1rem;">
           <label style="display:block;font-weight:600;margin-bottom:.4rem;">Subir documento (PDF o DOCX)</label>
           <p style="font-size:.85rem;color:#888;margin-bottom:.5rem;">El texto se extrae en tu navegador. Tu archivo no se sube al servidor.</p>
