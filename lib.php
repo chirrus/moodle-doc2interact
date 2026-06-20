@@ -28,3 +28,21 @@ function doc2interact_supports($feature) {
         default:                        return null;
     }
 }
+
+// Servir archivos HTML generados (contenido + autoevaluación)
+function doc2interact_pluginfile($course, $cm, $context, $filearea, $args, $forcedownload, array $options = []) {
+    if ($context->contextlevel != CONTEXT_MODULE) return false;
+    require_login($course, true, $cm);
+    if ($filearea !== 'content') return false;
+
+    $itemid = array_shift($args);
+    $filename = array_pop($args);
+    $filepath = $args ? '/' . implode('/', $args) . '/' : '/';
+
+    $fs = get_file_storage();
+    $file = $fs->get_file($context->id, 'mod_doc2interact', $filearea, $itemid, $filepath, $filename);
+    if (!$file || $file->is_directory()) return false;
+
+    // Servir como HTML sin forzar descarga
+    send_stored_file($file, 0, 0, false, $options);
+}
