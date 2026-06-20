@@ -34,7 +34,6 @@ function d2i_agregar_a_seccion($course, $cm, $modname, $instanceid) {
     $mod->added    = time();
     $mod->id = $DB->insert_record('course_modules', $mod);
 
-    // Refrescar sectionrow para tener sequence actualizado
     $sectionrow = $DB->get_record('course_sections', ['id' => $cm->section]);
     $seq = trim($sectionrow->sequence);
     $sectionrow->sequence = $seq ? $seq . ',' . $mod->id : (string)$mod->id;
@@ -43,6 +42,27 @@ function d2i_agregar_a_seccion($course, $cm, $modname, $instanceid) {
     context_module::instance($mod->id);
     rebuild_course_cache($course->id, true);
     return $mod->id;
+}
+
+// ─── HELPER: guardar HTML como archivo en Moodle y crear URL pública ─────────
+function d2i_guardar_html_como_archivo($context, $html, $filename) {
+    global $CFG;
+    $fs = get_file_storage();
+    // Borrar si ya existe
+    $fs->delete_area_files($context->id, 'mod_doc2interact', 'content', 0);
+    
+    $fileinfo = [
+        'contextid' => $context->id,
+        'component' => 'mod_doc2interact',
+        'filearea'  => 'content',
+        'itemid'    => 0,
+        'filepath'  => '/',
+        'filename'  => $filename,
+    ];
+    $file = $fs->create_file_from_string($fileinfo, $html);
+    return moodle_url::make_pluginfile_url(
+        $context->id, 'mod_doc2interact', 'content', 0, '/', $filename
+    );
 }
 
 // ─── PROCESAMIENTO ───────────────────────────────────────────────────────────
@@ -94,15 +114,21 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                 $errors  = [];
                 $creados = [];
 
-                // ── 1. HTML Contenido → Página ─────────────────────────────
+                // ── 1. HTML Contenido → Página con iframe ──────────────────
                 if (!empty($data['htmlContenido'])) {
                     try {
+                        // Guardar HTML como archivo para evitar filtrado de scripts
+                        $filename_cont = clean_filename($titulo) . '_contenido.html';
+                        $fileurl_cont  = d2i_guardar_html_como_archivo($context, $data['htmlContenido'], $filename_cont);
+
+                        $iframe_html = '<iframe src="' . $fileurl_cont . '" style="width:100%;height:85vh;border:none;border-radius:12px;" allowfullscreen></iframe>';
+
                         $page = new stdClass();
                         $page->course        = $course->id;
                         $page->name          = $titulo . ' — Contenido interactivo';
                         $page->intro         = '';
                         $page->introformat   = FORMAT_HTML;
-                        $page->content       = $data['htmlContenido'];
+                        $page->content       = $iframe_html;
                         $page->contentformat = FORMAT_HTML;
                         $page->display       = 0;
                         $page->timemodified  = time();
@@ -114,15 +140,20 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                     }
                 }
 
-                // ── 2. HTML Autoevaluación → Página ───────────────────────
+                // ── 2. HTML Autoevaluación → Página con iframe ─────────────
                 if (!empty($data['htmlEvaluacion'])) {
                     try {
+                        $filename_eval = clean_filename($titulo) . '_autoevaluacion.html';
+                        $fileurl_eval  = d2i_guardar_html_como_archivo($context, $data['htmlEvaluacion'], $filename_eval);
+
+                        $iframe_html = '<iframe src="' . $fileurl_eval . '" style="width:100%;height:85vh;border:none;border-radius:12px;" allowfullscreen></iframe>';
+
                         $page = new stdClass();
                         $page->course        = $course->id;
                         $page->name          = $titulo . ' — Autoevaluación';
                         $page->intro         = '';
                         $page->introformat   = FORMAT_HTML;
-                        $page->content       = $data['htmlEvaluacion'];
+                        $page->content       = $iframe_html;
                         $page->contentformat = FORMAT_HTML;
                         $page->display       = 0;
                         $page->timemodified  = time();
@@ -173,7 +204,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
 
                         $cmid = d2i_agregar_a_seccion($course, $cm, 'forum', $forum->id);
 
-                        // Crear discusión inicial (requerida por tipo 'single')
                         $discussion = new stdClass();
                         $discussion->course       = $course->id;
                         $discussion->forum        = $forum->id;
@@ -190,7 +220,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $discussion->timelocked   = 0;
                         $discussion->id = $DB->insert_record('forum_discussions', $discussion);
 
-                        // Crear post inicial
                         $post = new stdClass();
                         $post->discussion    = $discussion->id;
                         $post->parent        = 0;
@@ -208,8 +237,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $post->deleted       = 0;
                         $post->privatereplyto = 0;
                         $post->id = $DB->insert_record('forum_posts', $post);
-
-                        // Actualizar firstpost
                         $DB->set_field('forum_discussions', 'firstpost', $post->id, ['id' => $discussion->id]);
 
                         $creados[] = 'Foro';
@@ -225,9 +252,8 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $assign = new stdClass();
                         $assign->course                      = (int)$course->id;
                         $assign->name                        = $titulo . ' — Tarea';
-                        // Limpiar emojis (MySQL utf8 no soporta caracteres de 4 bytes)
                         $intro_tarea = preg_replace('/[\x{10000}-\x{10FFFF}]/u', '', $data['tarea']);
-                        $assign->intro = $intro_tarea;
+                        $assign->intro                       = $intro_tarea;
                         $assign->introformat                 = FORMAT_HTML;
                         $assign->activity                    = '';
                         $assign->activityformat              = FORMAT_HTML;
@@ -259,13 +285,11 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $assign->markingallocation           = 0;
                         $assign->markinganonymous            = 0;
                         $assign->preventsubmissionnotingroup = 0;
-
                         $assign->id = $DB->insert_record('assign', $assign);
                         if (!$assign->id) throw new Exception('insert_record assign falló');
 
                         d2i_agregar_a_seccion($course, $cm, 'assign', $assign->id);
 
-                        // Habilitar entrega de archivo y texto en línea
                         $DB->delete_records('assign_plugin_config', ['assignment' => $assign->id]);
                         foreach ([['assignsubmission','file','enabled','1'],
                                   ['assignsubmission','onlinetext','enabled','1'],
@@ -286,7 +310,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                     }
                 }
 
-                // ── 5. Banco de preguntas (estructura Moodle 4.x) ─────────
+                // ── 5. Banco de preguntas ─────────────────────────────────
                 if (!empty($data['giftTexto'])) {
                     try {
                         require_once($CFG->dirroot . '/lib/questionlib.php');
@@ -294,7 +318,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
 
                         $context_course = context_course::instance($course->id);
 
-                        // Categoría padre = nombre del plugin
                         $cat_padre = $DB->get_record('question_categories', [
                             'name'      => $instance->name,
                             'contextid' => $context_course->id,
@@ -311,7 +334,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                             $cat_padre->id = $DB->insert_record('question_categories', $cat_padre);
                         }
 
-                        // Subcategoría = título del contenido generado
                         $cat = new stdClass();
                         $cat->name       = $titulo;
                         $cat->contextid  = $context_course->id;
@@ -322,12 +344,10 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $cat->stamp      = make_unique_id_code();
                         $cat->id = $DB->insert_record('question_categories', $cat);
 
-                        // Parsear GIFT — soporta MCH, V/F y completar
-                        $texto = preg_replace('/\/\/[^\n]*\n/', "\n", $data['giftTexto']);
-                        $texto = preg_replace('/\/\/[^\n]*$/', '', $texto);
-                        $bloques = preg_split('/\n\s*\n/', trim($texto));
+                        $texto_gift = preg_replace('/\/\/[^\n]*\n/', "\n", $data['giftTexto']);
+                        $texto_gift = preg_replace('/\/\/[^\n]*$/', '', $texto_gift);
+                        $bloques = preg_split('/\n\s*\n/', trim($texto_gift));
                         $importadas = 0;
-
                         $contadorMCH = 0;
                         $contadorVF  = 0;
                         $contadorSA  = 0;
@@ -339,32 +359,26 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
 
                             $enunciado = trim($m[2]);
                             $opciones  = trim($m[3]);
-
-                            // Detectar tipo de pregunta
                             $qtype = 'multichoice';
                             $opciones_norm = strtolower(trim($opciones));
 
                             if (preg_match('/^(true|false|verdadero|falso|t|f)$/i', $opciones_norm)) {
-                                $qtype = 'truefalse';
-                                $contadorVF++;
+                                $qtype = 'truefalse'; $contadorVF++;
                                 $nombre = $titulo . ' — V/F ' . $contadorVF;
                             } elseif (strpos($opciones, '=') === false && strpos($opciones, '~') === false) {
-                                $qtype = 'shortanswer';
-                                $contadorSA++;
+                                $qtype = 'shortanswer'; $contadorSA++;
                                 $nombre = $titulo . ' — Completar ' . $contadorSA;
                             } else {
                                 $contadorMCH++;
                                 $nombre = $titulo . ' — MCH ' . $contadorMCH;
                             }
 
-                            // Crear question_bank_entry
                             $qbe = new stdClass();
                             $qbe->questioncategoryid = $cat->id;
                             $qbe->idnumber           = null;
                             $qbe->ownerid            = $USER->id;
                             $qbe->id = $DB->insert_record('question_bank_entries', $qbe);
 
-                            // Crear question
                             $q = new stdClass();
                             $q->category              = $cat->id;
                             $q->parent                = 0;
@@ -387,7 +401,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                             $q->modifiedby            = $USER->id;
                             $q->id = $DB->insert_record('question', $q);
 
-                            // Crear question_versions
                             $qv = new stdClass();
                             $qv->questionbankentryid = $qbe->id;
                             $qv->version             = 1;
@@ -396,7 +409,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                             $DB->insert_record('question_versions', $qv);
 
                             if ($qtype === 'multichoice') {
-                                // Opciones multichoice
                                 $qmc = new stdClass();
                                 $qmc->questionid                     = $q->id;
                                 $qmc->layout                         = 0;
@@ -423,11 +435,8 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                                     $ans->feedbackformat = FORMAT_HTML;
                                     $DB->insert_record('question_answers', $ans);
                                 }
-
                             } elseif ($qtype === 'truefalse') {
-                                // Verdadero/Falso
                                 $esVerdadero = preg_match('/^(true|verdadero|t)$/i', $opciones_norm);
-
                                 $qdb = new stdClass();
                                 $qdb->question       = $q->id;
                                 $qdb->trueanswerfeedback  = '';
@@ -436,50 +445,35 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                                 $qdb->falseanswerfeedbackformat = FORMAT_HTML;
                                 $qdb->showstandardinstruction = 0;
 
-                                // Respuesta verdadera
                                 $ansT = new stdClass();
-                                $ansT->question      = $q->id;
-                                $ansT->answer        = 'Verdadero';
-                                $ansT->answerformat  = FORMAT_PLAIN;
-                                $ansT->fraction      = $esVerdadero ? 1.0 : 0.0;
-                                $ansT->feedback      = '';
-                                $ansT->feedbackformat = FORMAT_HTML;
+                                $ansT->question = $q->id; $ansT->answer = 'Verdadero';
+                                $ansT->answerformat = FORMAT_PLAIN;
+                                $ansT->fraction = $esVerdadero ? 1.0 : 0.0;
+                                $ansT->feedback = ''; $ansT->feedbackformat = FORMAT_HTML;
                                 $ansT->id = $DB->insert_record('question_answers', $ansT);
 
-                                // Respuesta falsa
                                 $ansF = new stdClass();
-                                $ansF->question      = $q->id;
-                                $ansF->answer        = 'Falso';
-                                $ansF->answerformat  = FORMAT_PLAIN;
-                                $ansF->fraction      = $esVerdadero ? 0.0 : 1.0;
-                                $ansF->feedback      = '';
-                                $ansF->feedbackformat = FORMAT_HTML;
+                                $ansF->question = $q->id; $ansF->answer = 'Falso';
+                                $ansF->answerformat = FORMAT_PLAIN;
+                                $ansF->fraction = $esVerdadero ? 0.0 : 1.0;
+                                $ansF->feedback = ''; $ansF->feedbackformat = FORMAT_HTML;
                                 $ansF->id = $DB->insert_record('question_answers', $ansF);
 
                                 $qdb->trueanswer  = $ansT->id;
                                 $qdb->falseanswer = $ansF->id;
                                 $DB->insert_record('question_truefalse', $qdb);
-
                             } elseif ($qtype === 'shortanswer') {
-                                // Respuesta corta
                                 $qsa = new stdClass();
-                                $qsa->questionid   = $q->id;
-                                $qsa->usecase      = 0;
+                                $qsa->questionid = $q->id; $qsa->usecase = 0;
                                 $DB->insert_record('qtype_shortanswer_options', $qsa);
-
-                                // Extraer respuesta correcta del GIFT: {=respuesta}
                                 preg_match('/=([^}#]+)/', $opciones, $sa_m);
                                 $respuesta = isset($sa_m[1]) ? trim($sa_m[1]) : trim($opciones, '= ');
                                 $ans = new stdClass();
-                                $ans->question      = $q->id;
-                                $ans->answer        = $respuesta;
-                                $ans->answerformat  = FORMAT_PLAIN;
-                                $ans->fraction      = 1.0;
-                                $ans->feedback      = '';
-                                $ans->feedbackformat = FORMAT_HTML;
+                                $ans->question = $q->id; $ans->answer = $respuesta;
+                                $ans->answerformat = FORMAT_PLAIN; $ans->fraction = 1.0;
+                                $ans->feedback = ''; $ans->feedbackformat = FORMAT_HTML;
                                 $DB->insert_record('question_answers', $ans);
                             }
-
                             $importadas++;
                         }
 
@@ -534,6 +528,10 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                 if (!empty($errors)) {
                     $nombresError = array_map(function($e) { return explode(':', $e)[0]; }, $errors);
                     echo $OUTPUT->notification('⚠️ Algunos recursos no pudieron crearse: ' . implode(', ', $nombresError), 'warning');
+                    // Log detallado para debug
+                    foreach ($errors as $err) {
+                        error_log('[Doc2Interact] Error: ' . $err);
+                    }
                 }
                 echo '<p style="margin-top:1rem;"><a href="' . new moodle_url('/course/view.php', ['id' => $course->id]) . '" class="btn btn-primary">Ver el curso</a></p>';
             }
@@ -558,14 +556,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) !== 'generate') {
         </div>
 
         <div style="margin-bottom:1rem;">
-          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Tipo de contenido</label>
-          <select name="tipocont" style="padding:.5rem;border:1px solid #ccc;border-radius:4px;">
-            <option value="pagina">Página web interactiva</option>
-            <option value="slides">Presentación de diapositivas</option>
-          </select>
-        </div>
-
-        <div style="margin-bottom:1rem;">
           <label style="display:block;font-weight:600;margin-bottom:.4rem;">Subir documento (PDF o DOCX)</label>
           <p style="font-size:.85rem;color:#888;margin-bottom:.5rem;">El texto se extrae en tu navegador. Tu archivo no se sube al servidor.</p>
           <input type="file" id="docfile" accept=".pdf,.docx" style="display:block;margin-bottom:.5rem;" />
@@ -577,7 +567,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) !== 'generate') {
         <div style="margin-bottom:1.5rem;">
           <label style="display:block;font-weight:600;margin-bottom:.4rem;">Instrucciones adicionales (opcional)</label>
           <textarea name="instrucciones" rows="3"
-                    placeholder="Ej: colores azul y dorado, fuente Montserrat..."
+                    placeholder="Ej: colores azul y dorado, logo: https://..."
                     style="width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;"></textarea>
         </div>
 
