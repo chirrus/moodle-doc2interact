@@ -79,7 +79,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
             'promptExtra'   => $instrucciones,
             'nombreBase'    => preg_replace('/[^a-z0-9_]/i', '_', $titulo),
             'logo'          => '',
-            'colores'       => '',
+            'colores'       => $instrucciones,
             'moodlePlugin'  => true,
         ]);
 
