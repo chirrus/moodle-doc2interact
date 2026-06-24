@@ -64,7 +64,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
     $texto         = optional_param('texto', '', PARAM_RAW);
     $titulo        = optional_param('titulo', $instance->name, PARAM_TEXT);
     $instrucciones = optional_param('instrucciones', '', PARAM_RAW);
-    $apikey        = get_config('mod_doc2interact', 'apikey') ?: 'Moodle2026#!';
+    $apikey        = get_config('mod_doc2interact', 'apikey') ?: 'prueba';
     $apiurl        = get_config('mod_doc2interact', 'apiurl') ?: 'https://doc2interact.com';
 
     if (empty(trim($texto))) {
