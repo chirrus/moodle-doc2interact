@@ -112,7 +112,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $filename_cont = clean_filename($titulo) . '_contenido.html';
                         $fileurl_cont  = d2i_guardar_html($context, $data['htmlContenido'], $filename_cont, 1);
 
-                        $iframe = '<iframe src="' . $fileurl_cont . '" style="width:100%;height:85vh;border:none;border-radius:12px;" allowfullscreen></iframe>';
+                        $iframe = '<div style="position:relative;width:100%;height:85vh;min-height:500px;border-radius:12px;overflow:hidden;"><iframe src="' . $fileurl_cont . '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allowfullscreen></iframe></div>';
 
                         $page = new stdClass();
                         $page->course        = $course->id;
@@ -137,7 +137,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $filename_eval = clean_filename($titulo) . '_autoevaluacion.html';
                         $fileurl_eval  = d2i_guardar_html($context, $data['htmlEvaluacion'], $filename_eval, 2);
 
-                        $iframe = '<iframe src="' . $fileurl_eval . '" style="width:100%;height:85vh;border:none;border-radius:12px;" allowfullscreen></iframe>';
+                        $iframe = '<div style="position:relative;width:100%;height:85vh;min-height:500px;border-radius:12px;overflow:hidden;"><iframe src="' . $fileurl_eval . '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allowfullscreen></iframe></div>';
 
                         $page = new stdClass();
                         $page->course        = $course->id;
