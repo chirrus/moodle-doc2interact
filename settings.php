@@ -15,7 +15,7 @@ if ($ADMIN->fulltree) {
         'mod_doc2interact/apikey',
         get_string('apikey', 'mod_doc2interact'),
         get_string('apikey_desc', 'mod_doc2interact'),
-        'Moodle2026#!', // Clave por defecto — configurar en MongoDB
+        'prueba', // Clave de prueba gratuita — solicitar clave institucional en doc2interact.com
         PARAM_RAW
     ));
 
