@@ -1,4 +1,19 @@
 <?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle. If not, see <http://www.gnu.org/licenses/>.
+
 require_once('../../config.php');
 require_once($CFG->dirroot . '/mod/doc2interact/lib.php');
 require_once($CFG->dirroot . '/course/lib.php');
@@ -19,7 +34,10 @@ $iseditor = has_capability('mod/doc2interact:generate', $context);
 echo $OUTPUT->header();
 echo $OUTPUT->heading($instance->name);
 
-function d2i_agregar_a_seccion($course, $cm, $modname, $instanceid) {
+// Trigger course_module_viewed event.
+doc2interact_view($instance, $course, $cm, $context);
+
+function mod_doc2interact_agregar_a_seccion($course, $cm, $modname, $instanceid) {
     global $DB;
     $modid = $DB->get_field('modules', 'id', ['name' => $modname]);
     if (!$modid) throw new Exception("Módulo $modname no instalado en Moodle");
@@ -40,8 +58,8 @@ function d2i_agregar_a_seccion($course, $cm, $modname, $instanceid) {
     return $mod->id;
 }
 
-// itemid diferente para cada archivo — 1=contenido, 2=autoevaluacion
-function d2i_guardar_html($context, $html, $filename, $itemid) {
+// Different itemid for each file: 1=content, 2=self-assessment
+function mod_doc2interact_guardar_html($context, $html, $filename, $itemid) {
     $fs = get_file_storage();
     $fs->delete_area_files($context->id, 'mod_doc2interact', 'content', $itemid);
     $fileinfo = [
@@ -61,14 +79,14 @@ function d2i_guardar_html($context, $html, $filename, $itemid) {
 if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
     require_sesskey();
 
-    $texto         = optional_param('texto', '', PARAM_RAW);
+    $texto         = optional_param('texto', '', PARAM_CLEANHTML);
     $titulo        = optional_param('titulo', $instance->name, PARAM_TEXT);
-    $instrucciones = optional_param('instrucciones', '', PARAM_RAW);
+    $instrucciones = optional_param('instrucciones', '', PARAM_TEXT);
     $apikey        = get_config('mod_doc2interact', 'apikey') ?: 'prueba';
     $apiurl        = get_config('mod_doc2interact', 'apiurl') ?: 'https://doc2interact.com';
 
     if (empty(trim($texto))) {
-        echo $OUTPUT->notification('Debés subir un archivo y esperar que se extraiga el texto.', 'error');
+        echo $OUTPUT->notification(get_string('notext', 'mod_doc2interact'), 'error');
     } else {
         $tipoh5p = optional_param('tipoh5p', 'questionset', PARAM_ALPHA);
         $payload = json_encode([
@@ -83,21 +101,18 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
             'moodlePlugin'  => true,
         ]);
 
-        $ch = curl_init($apiurl . '/generar');
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 180,
-        ]);
-        $response = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlerr  = curl_error($ch);
-        curl_close($ch);
+        $curl = new \curl();
+        $curl->setopt(array(
+            'CURLOPT_RETURNTRANSFER' => true,
+            'CURLOPT_TIMEOUT'        => 180,
+            'CURLOPT_HTTPHEADER'     => array('Content-Type: application/json'),
+        ));
+        $response = $curl->post($apiurl . '/generar', $payload);
+        $httpcode = $curl->get_info()['http_code'];
+        $curlerr  = $curl->get_errno();
 
         if ($curlerr || $httpcode !== 200) {
-            echo $OUTPUT->notification('Error conectando con Doc2Interact: ' . ($curlerr ?: "HTTP $httpcode"), 'error');
+            echo $OUTPUT->notification('Error connecting with Doc2Interact: ' . ($curlerr ?: "HTTP $httpcode"), 'error');
         } else {
             $data = json_decode($response, true);
             if (!$data || isset($data['error'])) {
@@ -106,11 +121,11 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                 $errors  = [];
                 $creados = [];
 
-                // ── 1. HTML Contenido → itemid=1 ──────────────────────────
+                // 1. Interactive HTML Content (itemid=1)
                 if (!empty($data['htmlContenido'])) {
                     try {
                         $filename_cont = clean_filename($titulo) . '_contenido.html';
-                        $fileurl_cont  = d2i_guardar_html($context, $data['htmlContenido'], $filename_cont, 1);
+                        $fileurl_cont  = mod_doc2interact_guardar_html($context, $data['htmlContenido'], $filename_cont, 1);
 
                         $iframe = '<div style="position:relative;width:100%;height:85vh;min-height:500px;border-radius:12px;overflow:hidden;"><iframe src="' . $fileurl_cont . '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allowfullscreen></iframe></div>';
 
@@ -124,18 +139,18 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $page->display       = 0;
                         $page->timemodified  = time();
                         $page->id = $DB->insert_record('page', $page);
-                        d2i_agregar_a_seccion($course, $cm, 'page', $page->id);
+                        mod_doc2interact_agregar_a_seccion($course, $cm, 'page', $page->id);
                         $creados[] = 'Contenido interactivo';
                     } catch (Exception $e) {
                         $errors[] = 'Contenido: ' . $e->getMessage();
                     }
                 }
 
-                // ── 2. HTML Autoevaluación → itemid=2 ─────────────────────
+                // 2. Self-assessment HTML (itemid=2)
                 if (!empty($data['htmlEvaluacion'])) {
                     try {
                         $filename_eval = clean_filename($titulo) . '_autoevaluacion.html';
-                        $fileurl_eval  = d2i_guardar_html($context, $data['htmlEvaluacion'], $filename_eval, 2);
+                        $fileurl_eval  = mod_doc2interact_guardar_html($context, $data['htmlEvaluacion'], $filename_eval, 2);
 
                         $iframe = '<div style="position:relative;width:100%;height:85vh;min-height:500px;border-radius:12px;overflow:hidden;"><iframe src="' . $fileurl_eval . '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" allowfullscreen></iframe></div>';
 
@@ -149,14 +164,14 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $page->display       = 0;
                         $page->timemodified  = time();
                         $page->id = $DB->insert_record('page', $page);
-                        d2i_agregar_a_seccion($course, $cm, 'page', $page->id);
+                        mod_doc2interact_agregar_a_seccion($course, $cm, 'page', $page->id);
                         $creados[] = 'Autoevaluación';
                     } catch (Exception $e) {
                         $errors[] = 'Autoevaluación: ' . $e->getMessage();
                     }
                 }
 
-                // ── 3. Foro ───────────────────────────────────────────────
+                // 3. Discussion Forum
                 if (!empty($data['foro'])) {
                     try {
                         $intro_foro = preg_replace('/[\x{10000}-\x{10FFFF}]/u', '', $data['foro']);
@@ -177,7 +192,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $forum->displaywordcount = 0; $forum->lockdiscussionafter = 0;
                         $forum->id = $DB->insert_record('forum', $forum);
                         if (!$forum->id) throw new Exception('insert forum falló');
-                        d2i_agregar_a_seccion($course, $cm, 'forum', $forum->id);
+                        mod_doc2interact_agregar_a_seccion($course, $cm, 'forum', $forum->id);
                         $discussion = new stdClass();
                         $discussion->course = $course->id; $discussion->forum = $forum->id;
                         $discussion->name = $titulo . ' — Foro'; $discussion->firstpost = 0;
@@ -203,7 +218,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                     }
                 }
 
-                // ── 4. Tarea ──────────────────────────────────────────────
+                // 4. Assignment
                 if (!empty($data['tarea'])) {
                     try {
                         $assign = new stdClass();
@@ -228,7 +243,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $assign->markinganonymous = 0; $assign->preventsubmissionnotingroup = 0;
                         $assign->id = $DB->insert_record('assign', $assign);
                         if (!$assign->id) throw new Exception('insert_record assign falló');
-                        d2i_agregar_a_seccion($course, $cm, 'assign', $assign->id);
+                        mod_doc2interact_agregar_a_seccion($course, $cm, 'assign', $assign->id);
                         $DB->delete_records('assign_plugin_config', ['assignment' => $assign->id]);
                         foreach ([['assignsubmission','file','enabled','1'],
                                   ['assignsubmission','onlinetext','enabled','1'],
@@ -245,7 +260,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                     }
                 }
 
-                // ── 5. Banco de preguntas ─────────────────────────────────
+                // 5. Question Bank
                 if (!empty($data['giftTexto'])) {
                     try {
                         require_once($CFG->dirroot . '/lib/questionlib.php');
@@ -266,9 +281,15 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $cat->parent = $cat_padre->id; $cat->sortorder = 999;
                         $cat->stamp = make_unique_id_code();
                         $cat->id = $DB->insert_record('question_categories', $cat);
-                        $texto_gift = preg_replace('/\/\/[^\n]*\n/', "\n", $data['giftTexto']);
-                        $texto_gift = preg_replace('/\/\/[^\n]*$/', '', $texto_gift);
-                        $bloques = preg_split('/\n\s*\n/', trim($texto_gift));
+                        $texto_gift = preg_replace('/\/\/[^
+]*
+/', "
+", $data['giftTexto']);
+                        $texto_gift = preg_replace('/\/\/[^
+]*$/', '', $texto_gift);
+                        $bloques = preg_split('/
+\s*
+/', trim($texto_gift));
                         $importadas = 0; $contadorMCH = 0; $contadorVF = 0; $contadorSA = 0;
                         foreach ($bloques as $bloque) {
                             $bloque = trim($bloque);
@@ -305,7 +326,8 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                                 $qmc->incorrectfeedback = '<p>Incorrecto.</p>'; $qmc->incorrectfeedbackformat = FORMAT_HTML;
                                 $qmc->answernumbering = 'abc'; $qmc->shownumcorrect = 0;
                                 $DB->insert_record('qtype_multichoice_options', $qmc);
-                                preg_match_all('/([=~])([^=~#\n]+)/', $opciones, $rm, PREG_SET_ORDER);
+                                preg_match_all('/([=~])([^=~#
+]+)/', $opciones, $rm, PREG_SET_ORDER);
                                 foreach ($rm as $r) {
                                     $ans = new stdClass(); $ans->question = $q->id;
                                     $ans->answer = '<p>' . s(trim($r[2])) . '</p>'; $ans->answerformat = FORMAT_HTML;
@@ -348,7 +370,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                     }
                 }
 
-                // ── 6. H5P ────────────────────────────────────────────────
+                // 6. H5P Activity
                 if (!empty($data['h5pBase64'])) {
                     try {
                         $h5pcontent = base64_decode($data['h5pBase64']);
@@ -359,7 +381,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $h5p->intro = ''; $h5p->introformat = FORMAT_HTML;
                         $h5p->timecreated = time(); $h5p->timemodified = time();
                         $h5p->id = $DB->insert_record('h5pactivity', $h5p);
-                        $modcmid = d2i_agregar_a_seccion($course, $cm, 'h5pactivity', $h5p->id);
+                        $modcmid = mod_doc2interact_agregar_a_seccion($course, $cm, 'h5pactivity', $h5p->id);
                         $modcontext = context_module::instance($modcmid);
                         $fs = get_file_storage();
                         $fileinfo = ['contextid' => $modcontext->id, 'component' => 'mod_h5pactivity',
@@ -389,14 +411,14 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) !== 'generate') {
     $actionurl = new moodle_url('/mod/doc2interact/view.php', ['id' => $id, 'action' => 'generate', 'sesskey' => sesskey()]);
     ?>
     <div style="max-width:640px;margin:0 auto;font-family:sans-serif;">
-      <p style="color:#555;margin-bottom:1.5rem;">Subí un documento PDF o DOCX. Doc2Interact generará el contenido y lo agregará directamente a este curso.</p>
+      <p style="color:#555;margin-bottom:1.5rem;">Upload a PDF or DOCX document. Doc2Interact will generate the content and add it directly to this course.</p>
       <form method="post" action="<?php echo $actionurl; ?>">
         <div style="margin-bottom:1rem;">
-          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Título del contenido</label>
+          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Content title</label>
           <input type="text" name="titulo" value="<?php echo s($instance->name); ?>" style="width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;" />
         </div>
         <div style="margin-bottom:1rem;">
-          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Tipo de actividad H5P</label>
+          <label style="display:block;font-weight:600;margin-bottom:.4rem;">H5P activity type</label>
           <select name="tipoh5p" style="width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;">
             <option value="questionset">🎯 Question Set (5 MCH + 5 V/F)</option>
             <option value="crucigrama">🔤 Crucigrama (8 palabras clave)</option>
@@ -405,16 +427,16 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) !== 'generate') {
         </div>
 
         <div style="margin-bottom:1rem;">
-          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Subir documento (PDF o DOCX)</label>
+          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Upload document (PDF or DOCX)</label>
           <p style="font-size:.85rem;color:#888;margin-bottom:.5rem;">El texto se extrae en tu navegador. Tu archivo no se sube al servidor.</p>
           <input type="file" id="docfile" accept=".pdf,.docx" style="display:block;margin-bottom:.5rem;" />
-          <textarea name="texto" id="textoExtraido" rows="5" placeholder="El texto extraído aparecerá aquí antes de enviar..." style="width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem;color:#555;"></textarea>
+          <textarea name="texto" id="textoExtraido" rows="5" placeholder="Extracted text will appear here before submitting..." style="width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem;color:#555;"></textarea>
         </div>
         <div style="margin-bottom:1.5rem;">
-          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Instrucciones adicionales (opcional)</label>
+          <label style="display:block;font-weight:600;margin-bottom:.4rem;">Additional instructions (optional)</label>
           <textarea name="instrucciones" rows="3" placeholder="Ej: colores azul y dorado, logo: https://..." style="width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;"></textarea>
         </div>
-        <button type="submit" id="btnGenerar" style="background:#1a1a2e;color:#fff;padding:.75rem 2rem;border:none;border-radius:6px;font-size:1rem;cursor:pointer;">Generar contenido</button>
+        <button type="submit" id="btnGenerar" style="background:#1a1a2e;color:#fff;padding:.75rem 2rem;border:none;border-radius:6px;font-size:1rem;cursor:pointer;">Generate content</button>
       </form>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -434,7 +456,8 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) !== 'generate') {
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const content = await page.getTextContent();
-                    text += content.items.map(s => s.str).join(' ') + '\n';
+                    text += content.items.map(s => s.str).join(' ') + '
+';
                 }
                 textarea.value = text.trim();
             } else if (ext === 'docx') {
@@ -442,15 +465,15 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) !== 'generate') {
                 const result = await mammoth.extractRawText({arrayBuffer: ab});
                 textarea.value = result.value.trim();
             }
-        } catch(err) { textarea.value = ''; alert('No se pudo extraer el texto: ' + err.message); }
+        } catch(err) { textarea.value = ''; alert('Could not extract text: ' + err.message); }
     });
     document.querySelector('form').addEventListener('submit', function() {
         const btn = document.getElementById('btnGenerar');
-        btn.disabled = true; btn.textContent = 'Generando, por favor esperá...';
+        btn.disabled = true; btn.textContent = 'Generating, please wait...';
     });
     </script>
     <?php
 } elseif (!$iseditor) {
-    echo $OUTPUT->notification('Esta actividad es solo para docentes.', 'info');
+    echo $OUTPUT->notification(get_string('teacheronly', 'mod_doc2interact'), 'info');
 }
 echo $OUTPUT->footer();
