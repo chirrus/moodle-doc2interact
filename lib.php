@@ -70,7 +70,7 @@ function doc2interact_pluginfile($course, $cm, $context, $filearea, $args, $forc
  * @param stdClass $cm Course module object
  * @param context_module $context Context module object
  */
-function doc2interact_view(stdClass $doc2interact, stdClass $course, stdClass $cm, context_module $context): void {
+function doc2interact_view(stdClass $doc2interact, stdClass $course, $cm, context_module $context): void {
     // Trigger module viewed event.
     $event = \mod_doc2interact\event\course_module_viewed::create([
         'objectid' => $doc2interact->id,
