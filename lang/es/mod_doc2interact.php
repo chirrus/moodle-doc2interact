@@ -34,3 +34,12 @@ $string['created_error']        = 'Hubo un error al crear algunos recursos. Revi
 $string['error_nofile']         = 'Debés subir un archivo PDF o DOCX.';
 $string['error_api']            = 'Error al conectar con la API de Doc2Interact.';
 $string['error_credits']        = 'Créditos agotados. Contactá a Doc2Interact para recargar.';
+
+// Mensajes de interfaz
+$string['teacheronly']          = 'Esta actividad es solo para docentes.';
+$string['notext']               = 'Debés subir un archivo y esperar que se extraiga el texto.';
+
+// Privacidad
+$string['privacy:metadata:doc2interact_api']                  = 'Doc2Interact envía el texto del documento a su servidor API para generar contenido.';
+$string['privacy:metadata:doc2interact_api:textoCompleto']    = 'El texto extraído del documento subido.';
+$string['privacy:metadata:doc2interact_api:titulo']           = 'El título del contenido generado.';
