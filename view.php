@@ -86,7 +86,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
     $apiurl        = get_config('mod_doc2interact', 'apiurl') ?: 'https://doc2interact.com';
 
     if (empty(trim($texto))) {
-        echo $OUTPUT->notification(get_string('notext', 'mod_doc2interact'), 'error');
+        echo $OUTPUT->notification('Debés subir un archivo y esperar que se extraiga el texto.', 'error');
     } else {
         $tipoh5p = optional_param('tipoh5p', 'questionset', PARAM_ALPHA);
         $payload = json_encode([
@@ -474,6 +474,6 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) !== 'generate') {
     </script>
     <?php
 } elseif (!$iseditor) {
-    echo $OUTPUT->notification(get_string('teacheronly', 'mod_doc2interact'), 'info');
+    echo $OUTPUT->notification('Esta actividad es solo para docentes.', 'info');
 }
 echo $OUTPUT->footer();
