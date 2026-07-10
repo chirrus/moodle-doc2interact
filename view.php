@@ -79,7 +79,7 @@ function mod_doc2interact_guardar_html($context, $html, $filename, $itemid) {
 if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
     require_sesskey();
 
-    $texto         = optional_param('texto', '', PARAM_CLEANHTML);
+    $texto         = optional_param('texto', '', PARAM_RAW);
     $titulo        = optional_param('titulo', $instance->name, PARAM_TEXT);
     $instrucciones = optional_param('instrucciones', '', PARAM_TEXT);
     $apikey        = get_config('mod_doc2interact', 'apikey') ?: 'prueba';
