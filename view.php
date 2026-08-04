@@ -305,7 +305,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                             $q->generalfeedbackformat = FORMAT_HTML; $q->defaultmark = 1;
                             $q->penalty = ($qtype === 'multichoice') ? 0.3333333 : 1.0;
                             $q->qtype = $qtype; $q->length = 1; $q->stamp = make_unique_id_code();
-                            $q->version = make_unique_id_code(); $q->hidden = 0; $q->idnumber = null;
+                            $q->hidden = 0; $q->idnumber = null;
                             $q->timecreated = time(); $q->timemodified = time();
                             $q->createdby = $USER->id; $q->modifiedby = $USER->id;
                             $q->id = $DB->insert_record('question', $q);
