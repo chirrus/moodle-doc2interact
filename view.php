@@ -266,12 +266,36 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         require_once($CFG->dirroot . '/lib/questionlib.php');
                         require_once($CFG->dirroot . '/question/engine/bank.php');
                         $context_course = context_course::instance($course->id);
-                        $cat_padre = $DB->get_record('question_categories', ['name' => $instance->name, 'contextid' => $context_course->id]);
+                        // Jerarquía: top (raíz técnica) > Curso > Actividad/Tema
+                        $cat_top = $DB->get_record('question_categories', ['contextid' => $context_course->id, 'parent' => 0]);
+                        if (!$cat_top) {
+                            $cat_top = new stdClass();
+                            $cat_top->name = 'top';
+                            $cat_top->contextid = $context_course->id;
+                            $cat_top->info = ''; $cat_top->infoformat = FORMAT_HTML;
+                            $cat_top->parent = 0;
+                            $cat_top->sortorder = 0; $cat_top->stamp = make_unique_id_code();
+                            $cat_top->id = $DB->insert_record('question_categories', $cat_top);
+                        }
+
+                        // Nivel Curso — categoría con el nombre del curso
+                        $cat_curso = $DB->get_record('question_categories', ['name' => $course->fullname, 'contextid' => $context_course->id, 'parent' => $cat_top->id]);
+                        if (!$cat_curso) {
+                            $cat_curso = new stdClass();
+                            $cat_curso->name = $course->fullname; $cat_curso->contextid = $context_course->id;
+                            $cat_curso->info = 'Categoría del curso'; $cat_curso->infoformat = FORMAT_HTML;
+                            $cat_curso->parent = $cat_top->id;
+                            $cat_curso->sortorder = 500; $cat_curso->stamp = make_unique_id_code();
+                            $cat_curso->id = $DB->insert_record('question_categories', $cat_curso);
+                        }
+
+                        // Nivel Tema/Actividad — categoría con el nombre de la actividad Doc2Interact
+                        $cat_padre = $DB->get_record('question_categories', ['name' => $instance->name, 'contextid' => $context_course->id, 'parent' => $cat_curso->id]);
                         if (!$cat_padre) {
                             $cat_padre = new stdClass();
                             $cat_padre->name = $instance->name; $cat_padre->contextid = $context_course->id;
                             $cat_padre->info = 'Generado por Doc2Interact'; $cat_padre->infoformat = FORMAT_HTML;
-                            $cat_padre->parent = question_get_default_category($context_course->id, true)->id;
+                            $cat_padre->parent = $cat_curso->id;
                             $cat_padre->sortorder = 999; $cat_padre->stamp = make_unique_id_code();
                             $cat_padre->id = $DB->insert_record('question_categories', $cat_padre);
                         }
