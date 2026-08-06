@@ -260,128 +260,65 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                     }
                 }
 
-                // ── 5. Banco de preguntas ─────────────────────────────────
+                // ── 5. Banco de preguntas (archivo GIFT descargable) ───────
+                // Se sube como recurso de archivo en vez de escribir directo en las tablas
+                // de Moodle — la estructura del banco de preguntas cambia entre versiones
+                // (por ej. Moodle 4.5+ requiere la actividad mod_qbank). Este enfoque
+                // funciona en cualquier versión de Moodle sin depender del esquema interno.
                 if (!empty($data['giftTexto'])) {
                     try {
-                        require_once($CFG->dirroot . '/lib/questionlib.php');
-                        require_once($CFG->dirroot . '/question/engine/bank.php');
-                        $context_course = context_course::instance($course->id);
-                        // Jerarquía: top (raíz técnica) > Curso > Actividad/Tema
-                        $cat_top = $DB->get_record('question_categories', ['contextid' => $context_course->id, 'parent' => 0]);
-                        if (!$cat_top) {
-                            $cat_top = new stdClass();
-                            $cat_top->name = 'top';
-                            $cat_top->contextid = $context_course->id;
-                            $cat_top->info = ''; $cat_top->infoformat = FORMAT_HTML;
-                            $cat_top->parent = 0;
-                            $cat_top->sortorder = 0; $cat_top->stamp = make_unique_id_code();
-                            $cat_top->id = $DB->insert_record('question_categories', $cat_top);
-                        }
+                        require_once($CFG->dirroot . '/lib/resourcelib.php');
+                        require_once($CFG->dirroot . '/mod/resource/lib.php');
+                        $fs = get_file_storage();
+                        $filename_gift = clean_filename($titulo . '_banco_preguntas.txt');
+                        $fs->delete_area_files($context->id, 'mod_doc2interact', 'giftfile', 0);
+                        $fileinfo_gift = [
+                            'contextid' => $context->id,
+                            'component' => 'mod_doc2interact',
+                            'filearea'  => 'giftfile',
+                            'itemid'    => 0,
+                            'filepath'  => '/',
+                            'filename'  => $filename_gift,
+                        ];
+                        $fs->create_file_from_string($fileinfo_gift, $data['giftTexto']);
+                        $gifturl = moodle_url::make_pluginfile_url(
+                            $context->id, 'mod_doc2interact', 'giftfile', 0, '/', $filename_gift
+                        );
 
-                        // Nivel Curso — categoría con el nombre del curso
-                        $cat_curso = $DB->get_record('question_categories', ['name' => $course->fullname, 'contextid' => $context_course->id, 'parent' => $cat_top->id]);
-                        if (!$cat_curso) {
-                            $cat_curso = new stdClass();
-                            $cat_curso->name = $course->fullname; $cat_curso->contextid = $context_course->id;
-                            $cat_curso->info = 'Categoría del curso'; $cat_curso->infoformat = FORMAT_HTML;
-                            $cat_curso->parent = $cat_top->id;
-                            $cat_curso->sortorder = 500; $cat_curso->stamp = make_unique_id_code();
-                            $cat_curso->id = $DB->insert_record('question_categories', $cat_curso);
-                        }
-
-                        // Nivel Tema/Actividad — categoría con el nombre de la actividad Doc2Interact
-                        $cat_padre = $DB->get_record('question_categories', ['name' => $instance->name, 'contextid' => $context_course->id, 'parent' => $cat_curso->id]);
-                        if (!$cat_padre) {
-                            $cat_padre = new stdClass();
-                            $cat_padre->name = $instance->name; $cat_padre->contextid = $context_course->id;
-                            $cat_padre->info = 'Generado por Doc2Interact'; $cat_padre->infoformat = FORMAT_HTML;
-                            $cat_padre->parent = $cat_curso->id;
-                            $cat_padre->sortorder = 999; $cat_padre->stamp = make_unique_id_code();
-                            $cat_padre->id = $DB->insert_record('question_categories', $cat_padre);
-                        }
-                        $cat = new stdClass();
-                        $cat->name = $titulo; $cat->contextid = $context_course->id;
-                        $cat->info = ''; $cat->infoformat = FORMAT_HTML;
-                        $cat->parent = $cat_padre->id; $cat->sortorder = 999;
-                        $cat->stamp = make_unique_id_code();
-                        $cat->id = $DB->insert_record('question_categories', $cat);
-                        $texto_gift = preg_replace('/\/\/[^\n]*\n/', "\n", $data['giftTexto']);
-                        $texto_gift = preg_replace('/\/\/[^\n]*$/', '', $texto_gift);
-                        $bloques = preg_split('/\n\s*\n/', trim($texto_gift));
-                        $importadas = 0; $contadorMCH = 0; $contadorVF = 0; $contadorSA = 0;
-                        foreach ($bloques as $bloque) {
-                            $bloque = trim($bloque);
-                            if (empty($bloque)) continue;
-                            if (!preg_match('/^::([^:]+)::\s*(.*?)\s*\{(.+)\}$/s', $bloque, $m)) continue;
-                            $enunciado = trim($m[2]); $opciones = trim($m[3]);
-                            $qtype = 'multichoice'; $opciones_norm = strtolower(trim($opciones));
-                            if (preg_match('/^(true|false|verdadero|falso|t|f)$/i', $opciones_norm)) {
-                                $qtype = 'truefalse'; $contadorVF++; $nombre = $titulo . ' — V/F ' . $contadorVF;
-                            } elseif (strpos($opciones, '=') === false && strpos($opciones, '~') === false) {
-                                $qtype = 'shortanswer'; $contadorSA++; $nombre = $titulo . ' — Completar ' . $contadorSA;
-                            } else { $contadorMCH++; $nombre = $titulo . ' — MCH ' . $contadorMCH; }
-                            $qbe = new stdClass(); $qbe->questioncategoryid = $cat->id;
-                            $qbe->idnumber = null; $qbe->ownerid = $USER->id;
-                            $qbe->id = $DB->insert_record('question_bank_entries', $qbe);
-                            $q = new stdClass(); $q->category = $cat->id; $q->parent = 0;
-                            $q->name = $nombre; $q->questiontext = '<p>' . s($enunciado) . '</p>';
-                            $q->questiontextformat = FORMAT_HTML; $q->generalfeedback = '';
-                            $q->generalfeedbackformat = FORMAT_HTML; $q->defaultmark = 1;
-                            $q->penalty = ($qtype === 'multichoice') ? 0.3333333 : 1.0;
-                            $q->qtype = $qtype; $q->length = 1; $q->stamp = make_unique_id_code();
-                            $q->hidden = 0; $q->idnumber = null;
-                            $q->timecreated = time(); $q->timemodified = time();
-                            $q->createdby = $USER->id; $q->modifiedby = $USER->id;
-                            $q->id = $DB->insert_record('question', $q);
-                            $qv = new stdClass(); $qv->questionbankentryid = $qbe->id;
-                            $qv->version = 1; $qv->questionid = $q->id; $qv->status = 'ready';
-                            $DB->insert_record('question_versions', $qv);
-                            if ($qtype === 'multichoice') {
-                                $qmc = new stdClass(); $qmc->questionid = $q->id; $qmc->layout = 0;
-                                $qmc->single = 1; $qmc->shuffleanswers = 1;
-                                $qmc->correctfeedback = '<p>Correcto.</p>'; $qmc->correctfeedbackformat = FORMAT_HTML;
-                                $qmc->partiallycorrectfeedback = ''; $qmc->partiallycorrectfeedbackformat = FORMAT_HTML;
-                                $qmc->incorrectfeedback = '<p>Incorrecto.</p>'; $qmc->incorrectfeedbackformat = FORMAT_HTML;
-                                $qmc->answernumbering = 'abc'; $qmc->shownumcorrect = 0;
-                                $DB->insert_record('qtype_multichoice_options', $qmc);
-                                preg_match_all('/([=~])([^=~#\n]+)/', $opciones, $rm, PREG_SET_ORDER);
-                                foreach ($rm as $r) {
-                                    $ans = new stdClass(); $ans->question = $q->id;
-                                    $ans->answer = '<p>' . s(trim($r[2])) . '</p>'; $ans->answerformat = FORMAT_HTML;
-                                    $ans->fraction = ($r[1] === '=') ? 1.0 : 0.0;
-                                    $ans->feedback = ''; $ans->feedbackformat = FORMAT_HTML;
-                                    $DB->insert_record('question_answers', $ans);
-                                }
-                            } elseif ($qtype === 'truefalse') {
-                                $esVerdadero = preg_match('/^(true|verdadero|t)$/i', $opciones_norm);
-                                $qdb = new stdClass(); $qdb->question = $q->id;
-                                $qdb->trueanswerfeedback = ''; $qdb->trueanswerfeedbackformat = FORMAT_HTML;
-                                $qdb->falseanswerfeedback = ''; $qdb->falseanswerfeedbackformat = FORMAT_HTML;
-                                $qdb->showstandardinstruction = 0;
-                                $ansT = new stdClass(); $ansT->question = $q->id; $ansT->answer = 'Verdadero';
-                                $ansT->answerformat = FORMAT_PLAIN; $ansT->fraction = $esVerdadero ? 1.0 : 0.0;
-                                $ansT->feedback = ''; $ansT->feedbackformat = FORMAT_HTML;
-                                $ansT->id = $DB->insert_record('question_answers', $ansT);
-                                $ansF = new stdClass(); $ansF->question = $q->id; $ansF->answer = 'Falso';
-                                $ansF->answerformat = FORMAT_PLAIN; $ansF->fraction = $esVerdadero ? 0.0 : 1.0;
-                                $ansF->feedback = ''; $ansF->feedbackformat = FORMAT_HTML;
-                                $ansF->id = $DB->insert_record('question_answers', $ansF);
-                                $qdb->trueanswer = $ansT->id; $qdb->falseanswer = $ansF->id;
-                                $DB->insert_record('question_truefalse', $qdb);
-                            } elseif ($qtype === 'shortanswer') {
-                                $qsa = new stdClass(); $qsa->questionid = $q->id; $qsa->usecase = 0;
-                                $DB->insert_record('qtype_shortanswer_options', $qsa);
-                                preg_match('/=([^}#]+)/', $opciones, $sa_m);
-                                $respuesta = isset($sa_m[1]) ? trim($sa_m[1]) : trim($opciones, '= ');
-                                $ans = new stdClass(); $ans->question = $q->id; $ans->answer = $respuesta;
-                                $ans->answerformat = FORMAT_PLAIN; $ans->fraction = 1.0;
-                                $ans->feedback = ''; $ans->feedbackformat = FORMAT_HTML;
-                                $DB->insert_record('question_answers', $ans);
-                            }
-                            $importadas++;
-                        }
-                        if ($importadas === 0) throw new Exception('No se encontraron preguntas válidas');
-                        $creados[] = "Banco de preguntas ($importadas preguntas en '$titulo')";
+                        // Crear un recurso de archivo (resource) visible en el curso con instrucciones
+                        $resource = new stdClass();
+                        $resource->course = (int)$course->id;
+                        $resource->name = $titulo . ' — Banco de preguntas (GIFT)';
+                        $resource->intro = '<p>Archivo con el banco de preguntas generado por Doc2Interact.</p>' .
+                            '<p><strong>Cómo importarlo a tu banco de preguntas:</strong></p>' .
+                            '<ol>' .
+                            '<li>Descargá este archivo.</li>' .
+                            '<li>Andá a <em>Más &gt; Banco de preguntas &gt; Importar</em> dentro de este curso.</li>' .
+                            '<li>Elegí el formato <strong>GIFT</strong> y subí el archivo descargado.</li>' .
+                            '</ol>';
+                        $resource->introformat = FORMAT_HTML;
+                        $resource->tobemigrated = 0;
+                        $resource->legacyfiles = 0;
+                        $resource->legacyfileslast = null;
+                        $resource->display = RESOURCELIB_DISPLAY_AUTO;
+                        $resource->displayoptions = serialize(['printintro' => 1, 'popupheight' => null, 'popupwidth' => null]);
+                        $resource->filterfiles = 0;
+                        $resource->revision = 1;
+                        $resource->timemodified = time();
+                        $resource->id = $DB->insert_record('resource', $resource);
+                        if (!$resource->id) throw new Exception('insert_record resource falló');
+                        $modcmid_gift = mod_doc2interact_agregar_a_seccion($course, $cm, 'resource', $resource->id);
+                        $modcontext_gift = context_module::instance($modcmid_gift);
+                        $fs->delete_area_files($modcontext_gift->id, 'mod_resource', 'content', 0);
+                        $fs->create_file_from_string([
+                            'contextid' => $modcontext_gift->id,
+                            'component' => 'mod_resource',
+                            'filearea'  => 'content',
+                            'itemid'    => 0,
+                            'filepath'  => '/',
+                            'filename'  => $filename_gift,
+                        ], $data['giftTexto']);
+                        $creados[] = 'Banco de preguntas (archivo GIFT descargable)';
                     } catch (Exception $e) {
                         $errors[] = 'Banco de preguntas: ' . $e->getMessage();
                     }
