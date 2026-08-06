@@ -300,7 +300,7 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $resource->tobemigrated = 0;
                         $resource->legacyfiles = 0;
                         $resource->legacyfileslast = null;
-                        $resource->display = RESOURCELIB_DISPLAY_AUTO;
+                        $resource->display = RESOURCELIB_DISPLAY_EMBED;
                         $resource->displayoptions = serialize(['printintro' => 1, 'popupheight' => null, 'popupwidth' => null]);
                         $resource->filterfiles = 0;
                         $resource->revision = 1;
