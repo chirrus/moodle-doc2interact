@@ -37,7 +37,7 @@ echo $OUTPUT->heading($instance->name);
 // Trigger course_module_viewed event.
 doc2interact_view($instance, $course, $cm, $context);
 
-function mod_doc2interact_agregar_a_seccion($course, $cm, $modname, $instanceid) {
+function mod_doc2interact_agregar_a_seccion($course, $cm, $modname, $instanceid, $showdescription = 0) {
     global $DB;
     $modid = $DB->get_field('modules', 'id', ['name' => $modname]);
     if (!$modid) throw new Exception("Módulo $modname no instalado en Moodle");
@@ -47,6 +47,7 @@ function mod_doc2interact_agregar_a_seccion($course, $cm, $modname, $instanceid)
     $mod->instance = $instanceid;
     $mod->section  = $DB->get_record('course_sections', ['id' => $cm->section])->id;
     $mod->visible  = 1;
+    $mod->showdescription = $showdescription;
     $mod->added    = time();
     $mod->id = $DB->insert_record('course_modules', $mod);
     $sectionrow = $DB->get_record('course_sections', ['id' => $cm->section]);
@@ -300,14 +301,14 @@ if ($iseditor && optional_param('action', '', PARAM_ALPHA) === 'generate') {
                         $resource->tobemigrated = 0;
                         $resource->legacyfiles = 0;
                         $resource->legacyfileslast = null;
-                        $resource->display = RESOURCELIB_DISPLAY_EMBED;
+                        $resource->display = RESOURCELIB_DISPLAY_DOWNLOAD;
                         $resource->displayoptions = serialize(['printintro' => 1, 'popupheight' => null, 'popupwidth' => null]);
                         $resource->filterfiles = 0;
                         $resource->revision = 1;
                         $resource->timemodified = time();
                         $resource->id = $DB->insert_record('resource', $resource);
                         if (!$resource->id) throw new Exception('insert_record resource falló');
-                        $modcmid_gift = mod_doc2interact_agregar_a_seccion($course, $cm, 'resource', $resource->id);
+                        $modcmid_gift = mod_doc2interact_agregar_a_seccion($course, $cm, 'resource', $resource->id, 1);
                         $modcontext_gift = context_module::instance($modcmid_gift);
                         $fs->delete_area_files($modcontext_gift->id, 'mod_resource', 'content', 0);
                         $fs->create_file_from_string([
